@@ -3,8 +3,7 @@
 import re
 import argparse
 import subprocess
-from bs4 import BeautifulSoup
-from requests import get
+from os import remove
 
 version = "0.1.1 - Alpha"
 
@@ -61,7 +60,9 @@ def splitVideo(timestamps):
 
         segmentNumber += 1
         currentTime = endTime
-        print(" ".join(command))
+
+        if not arguments.keep:
+            remove(videoName)
 
 # Downloads video if asked for it. If not, just returns video file name.
 def downloadVideo():
