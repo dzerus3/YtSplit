@@ -3,6 +3,7 @@
 import re
 import argparse
 import subprocess
+import youtube_dl
 from os import remove
 
 version = "0.1.1 - Alpha"
@@ -61,32 +62,28 @@ def splitVideo(timestamps):
         segmentNumber += 1
         currentTime = endTime
 
-        if not arguments.keep:
-            remove(videoName)
+    if not arguments.keep:
+        remove(videoName)
 
 # Downloads video if asked for it. If not, just returns video file name.
 def downloadVideo():
     if arguments.video:
         return arguments.video
     else:
-        downloadCommand = ["youtube-dl", "-o", "ytdl-output.%(ext)s", "-w", "--no-post-overwrites", arguments.download]
-        # Most videos merged into mkv by default.
+        ydlOpts = {'outtmpl': 'ytdl-output.%(ext)s'}
+        # Most videos are merged into mkv by default.
         outputFormat = "mkv"
-
-        if arguments.args: #TODO Test this
-            args = " ".join(argument.args)
-            downloadCommand += args
 
         if arguments.format:
             outputFormat = arguments.format
-            videoFormat = ["--recode-video", arguments.format]
-            downloadCommand += videoFormat
+            ydlOpts["recodevideo"] = arguments.format
         elif arguments.extract_audio:
             outputFormat = arguments.extract_audio
-            audioFormat = ["--extract-audio", "--audio-format", arguments.extract_audio]
-            downloadCommand += audioFormat
+            ydlOpts["extractaudio"] = True
+            ydlOpts["audioformat"] = arguments.extract_audio
 
-        subprocess.call(downloadCommand)
+        with youtube_dl.YoutubeDL(ydlOpts) as ydl:
+            ydl.download([arguments.download])
 
         return "ytdl-output." + outputFormat
 
@@ -128,7 +125,6 @@ def parseArgs():
         "numerical": "Name videos numerically (useful if file does not follow `timestamp - name` format)",
         "zero": "Start with the first timestamp at 00:00. Useful if the first timestamp is not there.",
         "download": "Downloads video from youtube (requires youtube-dl)",
-        "args": "Args to pass to youtube-dl (only with --download and do not use the -o option)",
         "format": "Specify output format for downloaded video (only for download)",
         "extract_audio": "Tell youtube-dl to extract audio from video",
         "keep": "Keep original video",
@@ -163,11 +159,6 @@ def parseArgs():
                         action="store",
                         dest="download",
                         help=help_texts["download"])
-
-    parser.add_argument("-a", "--args",
-                        action="store",
-                        dest="args",
-                        help=help_texts["args"])
 
     parser.add_argument("--format",
                         action="store",
