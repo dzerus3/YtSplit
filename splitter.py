@@ -1,16 +1,14 @@
+#!/usr/bin/python3
+
 import re
 import argparse
 import subprocess
 from bs4 import BeautifulSoup
 from requests import get
 
-version = "0.0.1 - In development"
+version = "0.1.1 - Alpha"
 
 def main():
-    if arguments.version:
-        print(version)
-        quit()
-
     timestamps = getTimestamps()
     splitVideo(timestamps)
 
@@ -40,22 +38,24 @@ def getTimestampFromLine(line):
     return [time.group(0), name.group(0)]
 
 def splitVideo(timestamps):
-    fileFormat = getFileFormat()
     currentTime = getStartingTime(timestamps[0][0])
     segmentNumber = 1
 
-    videoDuration = getVideoDuration()
+    videoName = downloadVideo()
+    fileFormat = getFileFormat(videoName)
+    videoDuration = getVideoDuration(videoName)
 
     for stamp in timestamps:
         if arguments.numerical:
-            name = segmentNumber
+            name = str(segmentNumber)
         else:
             name = stamp[1]
 
-        endTime = getEndTime(segmentNumber, timestamps)
-        command = ["ffmpeg", "-ss", currentTime, "-t", endTime, "-i", arguments.video, "-acodec", "copy", "-vcodec", "copy", "\"" + name + fileFormat + "\""]
+        endTime = getEndTime(segmentNumber, timestamps, videoDuration)
+        #TODO make this work
+        command = ["ffmpeg", "-ss", currentTime, "-t", endTime, "-i", videoName, "-acodec", "copy", "-vcodec", "copy", "\"" + name + "." + fileFormat + "\""]
 
-        command = f"ffmpeg -ss {currentTime} -to {endTime} -i {arguments.video} -acodec copy -vcodec copy \"{name}{fileFormat}\""
+        command = f"ffmpeg -ss {currentTime} -to {endTime} -i {videoName} -acodec copy -vcodec copy \"{name}.{fileFormat}\""
 
         subprocess.call(command, shell=True)
 
@@ -63,17 +63,44 @@ def splitVideo(timestamps):
         currentTime = endTime
         print(" ".join(command))
 
-def getFileFormat():
-    fileFormat = re.search("(\.\w*)$", arguments.video)
+# Downloads video if asked for it. If not, just returns video file name.
+def downloadVideo():
+    if arguments.video:
+        return arguments.video
+    else:
+        downloadCommand = ["youtube-dl", "-o", "ytdl-output.%(ext)s", "-w", "--no-post-overwrites", arguments.download]
+        # Most videos merged into mkv by default.
+        outputFormat = "mkv"
+
+        if arguments.args: #TODO Test this
+            args = " ".join(argument.args)
+            downloadCommand += args
+
+        if arguments.format:
+            outputFormat = arguments.format
+            videoFormat = ["--recode-video", arguments.format]
+            downloadCommand += videoFormat
+        elif arguments.extract_audio:
+            outputFormat = arguments.extract_audio
+            audioFormat = ["--extract-audio", "--audio-format", arguments.extract_audio]
+            downloadCommand += audioFormat
+
+        subprocess.call(downloadCommand)
+
+        return "ytdl-output." + outputFormat
+
+def getFileFormat(videoName):
+    print(videoName)
+    fileFormat = re.search("(?<=\.)\w*", videoName)
     if not fileFormat:
         print("Could not find file extension in file name. Quitting.")
         quit()
 
     return fileFormat.group(0)
 
-def getEndTime(current, timestamps):
+def getEndTime(current, timestamps, videoDuration):
     if current == len(timestamps):
-        return getVideoDuration()
+        return videoDuration
     else:
         return timestamps[current][0]
 
@@ -83,8 +110,8 @@ def getStartingTime(firstTimestamp):
     else:
         return firstTimestamp
 
-def getVideoDuration():
-    duration = subprocess.check_output(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", "-sexagesimal", arguments.video]).decode("utf-8")
+def getVideoDuration(videoName):
+    duration = subprocess.check_output(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", "-sexagesimal", videoName]).decode("utf-8")
 
     return re.sub("'|\n", "", duration)
 
@@ -95,24 +122,20 @@ def parseArgs():
     )
 
     help_texts = {
-        "version": "Output program version and exit.",
         "file": "Destination of file with timestamps",
         "video": "Destination of video file",
         "numerical": "Name videos numerically (useful if file does not follow `timestamp - name` format)",
         "zero": "Start with the first timestamp at 00:00. Useful if the first timestamp is not there.",
         "download": "Downloads video from youtube (requires youtube-dl)",
         "args": "Args to pass to youtube-dl (only with --download and do not use the -o option)",
+        "format": "Specify output format for downloaded video (only for download)",
+        "extract_audio": "Tell youtube-dl to extract audio from video",
         "keep": "Keep original video",
         "regex_name": "Specify custom regex for file name",
         "regex_timestamp": "Specify custom regex for timestamp"
     }
 
     videoDestination = parser.add_mutually_exclusive_group(required=True)
-
-    parser.add_argument("--version",
-                        action="store_true",
-                        dest="version",
-                        help=help_texts["version"])
 
     parser.add_argument("-f", "--file",
                         action="store",
@@ -144,6 +167,16 @@ def parseArgs():
                         action="store",
                         dest="args",
                         help=help_texts["args"])
+
+    parser.add_argument("--format",
+                        action="store",
+                        dest="format",
+                        help=help_texts["format"])
+
+    parser.add_argument("--extract-audio",
+                        action="store",
+                        dest="extract_audio",
+                        help=help_texts["extract_audio"])
 
     parser.add_argument("-k", "--keep",
                         action="store",
