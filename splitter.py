@@ -15,11 +15,37 @@ def main():
 # Returns timestamp in whichever way the user specified.
 def getTimestamps():
     timestamps = []
+
+    if arguments.file is None and arguments.url is None:
+        parser.error('Either a file or a URL with timestamps is required')
+
+    if arguments.file:
+        timestamps = getTimestampFromFile(arguments.file)
+
+    elif arguments.url:
+        timestamps = getTimestampFromDescription(arguments.url)
+
+    return timestamps
+
+def getTimestampFromDescription(url):
+    timestamps = list()
+    with youtube_dl.YoutubeDL({}) as ydl:
+        infoDict = ydl.extract_info(url, download=False)
+        description = infoDict.get("description", None)
+        for line in iter(description.splitlines()):
+            timestamp = getTimestampFromLine(line)
+            if timestamp[0]:
+                timestamps.append(timestamp)
+    return timestamps
+
+def getTimestampFromFile(fileName):
+    timestamps = list()
     with open(arguments.file, "r") as timestampFile:
         for line in timestampFile.readlines():
             timestamp = getTimestampFromLine(line)
             if timestamp[0]:
                 timestamps.append(timestamp)
+
     return timestamps
 
 # Runs a regex on specified string to get the corresponding name and timestamp from a line in the description.
@@ -52,6 +78,7 @@ def splitVideo(timestamps):
             name = stamp[1]
 
         endTime = getEndTime(segmentNumber, timestamps, videoDuration)
+
         #TODO make this work
         command = ["ffmpeg", "-ss", currentTime, "-t", endTime, "-i", videoName, "-acodec", "copy", "-vcodec", "copy", "\"" + name + "." + fileFormat + "\""]
 
@@ -83,7 +110,7 @@ def downloadVideo():
             ydlOpts["audioformat"] = arguments.extract_audio
 
         with youtube_dl.YoutubeDL(ydlOpts) as ydl:
-            ydl.download([arguments.download])
+            ydl.download([arguments.url])
 
         return "ytdl-output." + outputFormat
 
@@ -121,6 +148,7 @@ def parseArgs():
 
     help_texts = {
         "file": "Destination of file with timestamps",
+        "url": "Download timestamps from a Youtube video description (required with --download)",
         "video": "Destination of video file",
         "numerical": "Name videos numerically (useful if file does not follow `timestamp - name` format)",
         "zero": "Start with the first timestamp at 00:00. Useful if the first timestamp is not there.",
@@ -137,8 +165,12 @@ def parseArgs():
     parser.add_argument("-f", "--file",
                         action="store",
                         dest="file",
-                        required=True,
                         help=help_texts["file"])
+
+    parser.add_argument("-u", "--url",
+                        action="store",
+                        dest="url",
+                        help=help_texts["url"])
 
     videoDestination.add_argument("-v",
                         action="store",
@@ -156,7 +188,7 @@ def parseArgs():
                         help=help_texts["zero"])
 
     videoDestination.add_argument("--download",
-                        action="store",
+                        action="store_true",
                         dest="download",
                         help=help_texts["download"])
 
