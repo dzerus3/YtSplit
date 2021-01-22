@@ -1,12 +1,43 @@
 import re
 import argparse
+import subprocess
+from bs4 import BeautifulSoup
 from requests import get
 
 version = "0.0.1 - In development"
-args = parseArgs()
 
 def main():
-    processArgs(args)
+    if arguments.version:
+        print(version)
+        quit()
+
+    timestamps = getTimestamps()
+    print(timestamps)
+
+# Returns timestamp in whichever way the user specified.
+def getTimestamps():
+    timestamps = []
+    with open(arguments.file, "r") as timestampFile:
+        for line in timestampFile.readlines():
+            timestamp = getTimestampFromLine(line)
+            if timestamp[0]:
+                timestamps.append(timestamp)
+    return timestamps
+
+# Runs a regex on specified string to get the corresponding name and timestamp from a line in the description.
+def getTimestampFromLine(line):
+    time = re.search(str(arguments.regex_timestamp), line)
+
+    # If there is external text
+    if not time:
+        return [None, None]
+
+    # If there is a timestamp without a name
+    name = re.search(str(arguments.regex_name), line)
+    if not name:
+        return [time.group(0), None]
+
+    return [time.group(0), name.group(0)]
 
 def parseArgs():
     parser = argparse.ArgumentParser(
@@ -19,26 +50,25 @@ def parseArgs():
         "file": "Destination of file with timestamps",
         "video": "Destination of video file",
         "numerical": "Name videos numerically (useful if file does not follow `timestamp - name` format)",
-        "url": "Gets description from URL (unnecessary with --download)",
         "download": "Downloads video from youtube (requires youtube-dl)",
-        "args": "Args to pass to youtube-dl (only with --download)(make sure to put between quotes)",
+        "args": "Args to pass to youtube-dl (only with --download and do not use the -o option)",
         "keep": "Keep original video",
-        "regex-name": "Specify custom regex for file name",
-        "regex-timestamp": "Specify custom regex for timestamp",
+        "regex_name": "Specify custom regex for file name",
+        "regex_timestamp": "Specify custom regex for timestamp",
         "debug": "Start in debug mode. Prints text to follow program's flow."
     }
 
-    videoDestination = parser.add_mutually_exclusive_group()
-    timestampDestination = parser.add_mutually_exclusive_group()
+    videoDestination = parser.add_mutually_exclusive_group(required=True)
 
     parser.add_argument("--version",
                         action="store_true",
                         dest="version",
                         help=help_texts["version"])
 
-    timestampDestination.add_argument("-f", "--file",
+    parser.add_argument("-f", "--file",
                         action="store",
                         dest="file",
+                        required=True,
                         help=help_texts["file"])
 
     videoDestination.add_argument("-v",
@@ -50,11 +80,6 @@ def parseArgs():
                         action="store_true",
                         dest="numerical",
                         help=help_texts["numerical"])
-
-    timestampDestination.add_argument("-u", "--url",
-                        action="store",
-                        dest="url",
-                        help=help_texts["url"])
 
     videoDestination.add_argument("--download",
                         action="store",
@@ -73,14 +98,15 @@ def parseArgs():
 
     parser.add_argument("--regex-name",
                         action="store",
-                        dest="regex-name",
-                        help=help_texts["regex-name"])
+                        dest="regex_name",
+                        default="(?<=-\ ).*",
+                        help=help_texts["regex_name"])
 
     parser.add_argument("--regex-timestamp",
                         action="store",
-                        dest="regex-timestamp",
+                        dest="regex_timestamp",
                         default="^\d{1,2}:\d{2}:*\d{0,2}",
-                        help=help_texts["regex-timestamp"])
+                        help=help_texts["regex_timestamp"])
 
     parser.add_argument("-d", "--debug",
                         action="store_true",
@@ -90,4 +116,5 @@ def parseArgs():
     return parser.parse_args()
 
 if __name__ == "__main__":
+    arguments = parseArgs()
     main()
