@@ -12,7 +12,7 @@ def main():
         quit()
 
     timestamps = getTimestamps()
-    print(timestamps)
+    splitVideo(timestamps)
 
 # Returns timestamp in whichever way the user specified.
 def getTimestamps():
@@ -26,18 +26,67 @@ def getTimestamps():
 
 # Runs a regex on specified string to get the corresponding name and timestamp from a line in the description.
 def getTimestampFromLine(line):
-    time = re.search(str(arguments.regex_timestamp), line)
+    time = re.search(arguments.regex_timestamp, line)
 
     # If there is external text
     if not time:
         return [None, None]
 
     # If there is a timestamp without a name
-    name = re.search(str(arguments.regex_name), line)
+    name = re.search(arguments.regex_name, line)
     if not name:
         return [time.group(0), None]
 
     return [time.group(0), name.group(0)]
+
+def splitVideo(timestamps):
+    fileFormat = getFileFormat()
+    currentTime = getStartingTime(timestamps[0][0])
+    segmentNumber = 1
+
+    videoDuration = getVideoDuration()
+
+    for stamp in timestamps:
+        if arguments.numerical:
+            name = segmentNumber
+        else:
+            name = stamp[1]
+
+        endTime = getEndTime(segmentNumber, timestamps)
+        command = ["ffmpeg", "-ss", currentTime, "-t", endTime, "-i", arguments.video, "-acodec", "copy", "-vcodec", "copy", "\"" + name + fileFormat + "\""]
+
+        command = f"ffmpeg -ss {currentTime} -to {endTime} -i {arguments.video} -acodec copy -vcodec copy \"{name}{fileFormat}\""
+
+        subprocess.call(command, shell=True)
+
+        segmentNumber += 1
+        currentTime = endTime
+        print(" ".join(command))
+
+def getFileFormat():
+    fileFormat = re.search("(\.\w*)$", arguments.video)
+    if not fileFormat:
+        print("Could not find file extension in file name. Quitting.")
+        quit()
+
+    return fileFormat.group(0)
+
+def getEndTime(current, timestamps):
+    if current == len(timestamps):
+        return getVideoDuration()
+    else:
+        return timestamps[current][0]
+
+def getStartingTime(firstTimestamp):
+    if arguments.zero:
+        return "0:00"
+    else:
+        return firstTimestamp
+
+def getVideoDuration():
+    duration = subprocess.check_output(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", "-sexagesimal", arguments.video]).decode("utf-8")
+
+    return re.sub("'|\n", "", duration)
 
 def parseArgs():
     parser = argparse.ArgumentParser(
@@ -50,12 +99,12 @@ def parseArgs():
         "file": "Destination of file with timestamps",
         "video": "Destination of video file",
         "numerical": "Name videos numerically (useful if file does not follow `timestamp - name` format)",
+        "zero": "Start with the first timestamp at 00:00. Useful if the first timestamp is not there.",
         "download": "Downloads video from youtube (requires youtube-dl)",
         "args": "Args to pass to youtube-dl (only with --download and do not use the -o option)",
         "keep": "Keep original video",
         "regex_name": "Specify custom regex for file name",
-        "regex_timestamp": "Specify custom regex for timestamp",
-        "debug": "Start in debug mode. Prints text to follow program's flow."
+        "regex_timestamp": "Specify custom regex for timestamp"
     }
 
     videoDestination = parser.add_mutually_exclusive_group(required=True)
@@ -80,6 +129,11 @@ def parseArgs():
                         action="store_true",
                         dest="numerical",
                         help=help_texts["numerical"])
+
+    parser.add_argument("-0", "--zero",
+                        action="store_true",
+                        dest="zero",
+                        help=help_texts["zero"])
 
     videoDestination.add_argument("--download",
                         action="store",
@@ -107,11 +161,6 @@ def parseArgs():
                         dest="regex_timestamp",
                         default="^\d{1,2}:\d{2}:*\d{0,2}",
                         help=help_texts["regex_timestamp"])
-
-    parser.add_argument("-d", "--debug",
-                        action="store_true",
-                        dest="debug",
-                        help=help_texts["debug"])
 
     return parser.parse_args()
 
