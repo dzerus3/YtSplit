@@ -9,6 +9,8 @@ from os import remove
 version = "1.0.0 - Release"
 
 def main():
+    # silence = SilenceFinder()
+    # silence.getSilenceTimestamps(arguments.video)
     timestamps = TimestampRetriever()
     splitter = VideoManipulator(timestamps.getTimestamps())
     splitter.splitVideo()
@@ -84,11 +86,12 @@ class VideoDownloader:
     def setDownloadOptions(self):
         ydlOpts = {'outtmpl': 'ytdl-output.%(ext)s'}
         # Most videos are merged into mkv by default.
+        # TODO: fails if it merges to webm instead
         self.outputFormat = "mkv"
 
         if arguments.format:
             self.outputFormat = arguments.format
-            ydlOpts["recodevideo"] = arguments.format
+            ydlOpts["recodevideo"] = self.outputFormat
         elif arguments.extract_audio:
             self.outputFormat = arguments.extract_audio
             ydlOpts["extractaudio"] = True
@@ -151,19 +154,63 @@ class VideoManipulator:
             print("Could not find file extension in file name. Quitting.")
             quit()
 
-        return fileFormat.group(0)
+class SilenceFinder:
+    # This entire function is basically weird voodoo magic, but hey, it works
+    def getSilenceTimestamps(self, fileName):
+        print("Retrieving silent parts of video for --intelligent. This may take several minutes.")
+        cmd = f"ffmpeg -i {fileName} -af silencedetect=d=0.5:n=0.03 -f null -"
+        args = cmd.split()
+        # FFMPEG only properly output to subprocess.Popen due to the way it buffers lines
+        process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,universal_newlines=True)
+        # Process runs parallel to ytsplit, so wait for it to finish first
+        process.wait()
 
-    def getVideoDuration(self, videoName):
-        command = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", "-sexagesimal", videoName]
-        duration = subprocess.check_output(command).decode("utf-8")
+        silence = self.readSilenceTimestamps(process.stdout.read().splitlines())
 
-        return re.sub("'|\n", "", duration)
+        return silence
 
-    def getEndTime(self, videoDuration, segmentNumber):
-        if segmentNumber == len(self.timestamps):
-            return videoDuration
+    def readSilenceTimestamps(self, output):
+        silence = []
+        pair = [None, None]
+
+        for line in output:
+            start = self.checkStartRegex(line)
+            end = self.checkEndRegex(line)
+
+            if start:
+                pair[0] = start
+            elif end:
+                pair[1] = end
+
+            if pair[0] and pair[1]:
+                silence.append(pair)
+                pair = [None, None]
+
+        return silence
+
+    def checkStartRegex(self, line):
+        startRegex = "(?<=silence_start:\ )\d*\.?\d*"
+        silenceStart = 0
+
+        match = re.search(startRegex, line)
+
+        if match:
+            time = match.group(0)
+            return time
         else:
-            return self.timestamps[segmentNumber][0]
+            return None
+
+    def checkEndRegex(self, line):
+        endRegex = "(?<=silence_end:\ )\d*\.?\d*"
+        silenceStart = 0
+
+        match = re.search(endRegex, line)
+
+        if match:
+            time = match.group(0)
+            return time
+        else:
+            return None
 
 def parseArgs():
     parser = argparse.ArgumentParser(
@@ -176,6 +223,11 @@ def parseArgs():
         "url": "Download timestamps from a Youtube video description (required with --download)",
         "video": "Destination of video file",
         "numerical": "Name videos numerically (useful if file does not follow `timestamp - name` format)",
+        "pad": "Pad beginning and end of audio by certain amount of seconds. May help smooth transitions when splitting music compilations.",
+        "intelligent": "Attempts to intelligently detect transitions between tracks based on whether there is silence next to the timestamp. Not guaranteed to work.",
+        "intelligent_duration": "Minimum duration of silence for it to be noticed. Usable only with --intelligent. Default: 0.5",
+        "intelligent_sensitivity": "Sensitivity of silence detector. Higher means more sensitive. Do not set the value too high. Usable only with --intelligent. Default: 0.03",
+        "intelligent_time": "How many seconds ahead and behind the timestamp silence detector will search. Usable only with --intelligent. Default: 3",
         "zero": "Start with the first timestamp at 00:00. Useful if the first timestamp is not there.",
         "download": "Downloads video from youtube (requires youtube-dl)",
         "format": "Specify output format for downloaded video (only for download)",
@@ -197,10 +249,30 @@ def parseArgs():
                         dest="url",
                         help=help_texts["url"])
 
-    videoDestination.add_argument("-v",
+    videoDestination.add_argument("-v", "--video",
                         action="store",
                         dest="video",
                         help=help_texts["video"])
+
+    parser.add_argument("-p", "--pad",
+                        action="store_true",
+                        dest="pad",
+                        help=help_texts["numerical"])
+
+    parser.add_argument("-i", "--intelligent",
+                        action="store_true",
+                        dest="intelligent",
+                        help=help_texts["intelligent"])
+
+    parser.add_argument("--intelligent-duration",
+                        action="store_true",
+                        dest="intelligent_duration",
+                        help=help_texts["intelligent_duration"])
+
+    parser.add_argument("--intelligent-sensitivity",
+                        action="store_true",
+                        dest="intelligent_sensitivity",
+                        help=help_texts["intelligent_sensitivity"])
 
     parser.add_argument("-n", "--numerical",
                         action="store_true",
