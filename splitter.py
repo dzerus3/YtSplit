@@ -6,139 +6,164 @@ import subprocess
 import youtube_dl
 from os import remove
 
-version = "0.1.1 - Alpha"
+version = "1.0.0 - Release"
 
 def main():
-    timestamps = getTimestamps()
-    splitVideo(timestamps)
+    timestamps = TimestampRetriever()
+    splitter = VideoManipulator(timestamps.getTimestamps())
+    splitter.splitVideo()
 
+class TimestampRetriever:
 # Returns timestamp in whichever way the user specified.
-def getTimestamps():
-    timestamps = []
+    def getTimestamps(self):
+        self.checkTimestampSource()
 
-    if arguments.file is None and arguments.url is None:
-        parser.error('Either a file or a URL with timestamps is required')
+        if arguments.file:
+            timestamps = self.getTimestampFromFile(arguments.file)
 
-    if arguments.file:
-        timestamps = getTimestampFromFile(arguments.file)
-
-    elif arguments.url:
-        timestamps = getTimestampFromDescription(arguments.url)
-
-    return timestamps
-
-def getTimestampFromDescription(url):
-    timestamps = list()
-    with youtube_dl.YoutubeDL({}) as ydl:
-        infoDict = ydl.extract_info(url, download=False)
-        description = infoDict.get("description", None)
-        for line in iter(description.splitlines()):
-            timestamp = getTimestampFromLine(line)
-            if timestamp[0]:
-                timestamps.append(timestamp)
-    return timestamps
-
-def getTimestampFromFile(fileName):
-    timestamps = list()
-    with open(arguments.file, "r") as timestampFile:
-        for line in timestampFile.readlines():
-            timestamp = getTimestampFromLine(line)
-            if timestamp[0]:
-                timestamps.append(timestamp)
-
-    return timestamps
-
-# Runs a regex on specified string to get the corresponding name and timestamp from a line in the description.
-def getTimestampFromLine(line):
-    time = re.search(arguments.regex_timestamp, line)
-
-    # If there is external text
-    if not time:
-        return [None, None]
-
-    # If there is a timestamp without a name
-    name = re.search(arguments.regex_name, line)
-    if not name:
-        return [time.group(0), None]
-
-    return [time.group(0), name.group(0)]
-
-def splitVideo(timestamps):
-    currentTime = getStartingTime(timestamps[0][0])
-    segmentNumber = 1
-
-    videoName = downloadVideo()
-    fileFormat = getFileFormat(videoName)
-    videoDuration = getVideoDuration(videoName)
-
-    for stamp in timestamps:
-        if arguments.numerical:
-            name = str(segmentNumber)
         else:
-            name = stamp[1]
+            timestamps = self.getTimestampFromDescription(arguments.url)
 
-        endTime = getEndTime(segmentNumber, timestamps, videoDuration)
+        return timestamps
 
-        #TODO make this work
-        command = ["ffmpeg", "-ss", currentTime, "-t", endTime, "-i", videoName, "-acodec", "copy", "-vcodec", "copy", "\"" + name + "." + fileFormat + "\""]
+    def checkTimestampSource(self):
+        if arguments.file is None and arguments.url is None:
+            print('Either a file or a URL with timestamps is required')
+            quit()
 
-        command = f"ffmpeg -ss {currentTime} -to {endTime} -i {videoName} -acodec copy -vcodec copy \"{name}.{fileFormat}\""
+    def getTimestampFromDescription(self, url):
+        timestamps = list()
+        with youtube_dl.YoutubeDL({}) as ydl:
+            infoDict = ydl.extract_info(url, download=False)
+            description = infoDict.get("description", None)
+            for line in iter(description.splitlines()):
+                timestamp = self.getTimestampFromLine(line)
+                if timestamp[0]:
+                    timestamps.append(timestamp)
+        return timestamps
 
-        subprocess.call(command, shell=True)
+    def getTimestampFromFile(self, fileName):
+        timestamps = list()
+        with open(arguments.file, "r") as timestampFile:
+            for line in timestampFile.readlines():
+                timestamp = self.getTimestampFromLine(line)
+                if timestamp[0]:
+                    timestamps.append(timestamp)
 
-        segmentNumber += 1
-        currentTime = endTime
+        return timestamps
 
-    if not arguments.keep:
-        remove(videoName)
+    def getTimestampFromLine(self, line):
+        time = re.search(arguments.regex_timestamp, line)
 
-# Downloads video if asked for it. If not, just returns video file name.
-def downloadVideo():
-    if arguments.video:
-        return arguments.video
-    else:
-        ydlOpts = {'outtmpl': 'ytdl-output.%(ext)s'}
-        # Most videos are merged into mkv by default.
-        outputFormat = "mkv"
+        # If there is external text
+        if not time:
+            return [None, None]
 
-        if arguments.format:
-            outputFormat = arguments.format
-            ydlOpts["recodevideo"] = arguments.format
-        elif arguments.extract_audio:
-            outputFormat = arguments.extract_audio
-            ydlOpts["extractaudio"] = True
-            ydlOpts["audioformat"] = arguments.extract_audio
+        # If there is a timestamp without a name
+        name = re.search(arguments.regex_name, line)
+        if not name:
+            return [time.group(0), None]
 
+        return [time.group(0), name.group(0)]
+
+class VideoDownloader:
+    def getVideo(self):
+        if arguments.video:
+            return arguments.video
+        else:
+            ydlOpts = self.setDownloadOptions()
+            self.downloadVideo(ydlOpts)
+
+            return "ytdl-output." + self.outputFormat
+
+    def downloadVideo(self, ydlOpts):
         with youtube_dl.YoutubeDL(ydlOpts) as ydl:
             ydl.download([arguments.url])
 
-        return "ytdl-output." + outputFormat
+    # Downloads video if asked for it. If not, just returns video file name.
+    def setDownloadOptions(self):
+        ydlOpts = {'outtmpl': 'ytdl-output.%(ext)s'}
+        # Most videos are merged into mkv by default.
+        self.outputFormat = "mkv"
 
-def getFileFormat(videoName):
-    print(videoName)
-    fileFormat = re.search("(?<=\.)\w*", videoName)
-    if not fileFormat:
-        print("Could not find file extension in file name. Quitting.")
-        quit()
+        if arguments.format:
+            self.outputFormat = arguments.format
+            ydlOpts["recodevideo"] = arguments.format
+        elif arguments.extract_audio:
+            self.outputFormat = arguments.extract_audio
+            ydlOpts["extractaudio"] = True
+            ydlOpts["audioformat"] = arguments.extract_audio
 
-    return fileFormat.group(0)
+        return ydlOpts
 
-def getEndTime(current, timestamps, videoDuration):
-    if current == len(timestamps):
-        return videoDuration
-    else:
-        return timestamps[current][0]
+class VideoManipulator:
+    def __init__(self, timestamps):
+        downloader = VideoDownloader()
 
-def getStartingTime(firstTimestamp):
-    if arguments.zero:
-        return "0:00"
-    else:
-        return firstTimestamp
+        self.timestamps = timestamps
+        self.videoName = downloader.getVideo()
+        self.fileFormat = self.getFileFormat(self.videoName)
 
-def getVideoDuration(videoName):
-    duration = subprocess.check_output(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", "-sexagesimal", videoName]).decode("utf-8")
+    def splitVideo(self):
+        currentTime = self.getStartingTime(self.timestamps[0][0])
+        videoDuration = self.getVideoDuration(self.videoName)
+        segmentNumber = 1
 
-    return re.sub("'|\n", "", duration)
+        for stamp in self.timestamps:
+            name = self.getSegmentName(str(segmentNumber), stamp[1])
+
+            endTime = self.getEndTime(videoDuration, segmentNumber)
+
+            #TODO make this work
+            # command = ["ffmpeg", "-ss", currentTime, "-t", endTime, "-i", videoName, "-acodec", "copy", "-vcodec", "copy", "\"" + name + "." + fileFormat + "\""]
+            # subprocess.call(command)
+
+            command = f"ffmpeg -ss {currentTime} -to {endTime} -i {self.videoName} -acodec copy -vcodec copy \"{name}.{self.fileFormat}\""
+            subprocess.call(command, shell=True)
+
+            segmentNumber += 1
+            currentTime = endTime
+
+        self.removeOriginal()
+
+    # Checks what the segment should be named based on whether -n was passed.
+    def getSegmentName(self, numerical, full):
+        if arguments.numerical:
+            return numerical
+        else:
+            return full
+
+    def getStartingTime(self, firstTimestamp):
+        if arguments.zero:
+            return "0:00"
+        else:
+            return firstTimestamp
+
+    # Deletes the split video unless -k was passed
+    def removeOriginal(self):
+        if not arguments.keep:
+            remove(self.videoName)
+
+    def getFileFormat(self, videoName):
+        print(videoName)
+        fileFormat = re.search("(?<=\.)\w*", videoName)
+        if not fileFormat:
+            print("Could not find file extension in file name. Quitting.")
+            quit()
+
+        return fileFormat.group(0)
+
+    def getVideoDuration(self, videoName):
+        command = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", "-sexagesimal", videoName]
+        duration = subprocess.check_output(command).decode("utf-8")
+
+        return re.sub("'|\n", "", duration)
+
+    def getEndTime(self, videoDuration, segmentNumber):
+        if segmentNumber == len(self.timestamps):
+            return videoDuration
+        else:
+            return self.timestamps[segmentNumber][0]
 
 def parseArgs():
     parser = argparse.ArgumentParser(
@@ -203,7 +228,7 @@ def parseArgs():
                         help=help_texts["extract_audio"])
 
     parser.add_argument("-k", "--keep",
-                        action="store",
+                        action="store_true",
                         dest="keep",
                         help=help_texts["keep"])
 
