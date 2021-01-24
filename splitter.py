@@ -67,8 +67,6 @@ class TimestampRetriever:
         if not name:
             return [time.group(0), None]
 
-        #TODO Convert the timestamps to timedelta
-
         return [time.group(0), name.group(0)]
 
 class VideoDownloader:
@@ -114,7 +112,6 @@ class VideoManipulator:
 
     def splitVideo(self):
         currentTime = self.timestampManip.getStartingTime(self.timestamps[0][0])
-        print("Starting time: " + currentTime)
         videoDuration = self.getVideoDuration(self.videoName)
         segmentNumber = 1
 
@@ -123,11 +120,13 @@ class VideoManipulator:
 
             endTime = self.timestampManip.getEndTime(videoDuration, segmentNumber, self.timestamps)
 
+            paddedStart, paddedEnd = self.timestampManip.padTimestamps(currentTime, endTime)
+
             #TODO make this work
             # command = ["ffmpeg", "-ss", currentTime, "-t", endTime, "-i", videoName, "-acodec", "copy", "-vcodec", "copy", "\"" + name + "." + fileFormat + "\""]
             # subprocess.call(command)
 
-            command = f"ffmpeg -ss {currentTime} -to {endTime} -i {self.videoName} -acodec copy -vcodec copy \"{name}.{self.fileFormat}\""
+            command = f"ffmpeg -hide_banner -loglevel error -ss {paddedStart} -to {paddedEnd} -i {self.videoName} -acodec copy -vcodec copy \"{name}.{self.fileFormat}\""
             subprocess.call(command, shell=True)
 
             segmentNumber += 1
@@ -166,7 +165,7 @@ class TimestampManipulator:
     def __init__(self):
         if arguments.intelligent:
             silence = SilenceFinder()
-            self.silenceTimestamps = silence.getSilenceTimestamps
+            self.silenceTimestamps = silence.getSilenceTimestamps()
 
     def getStartingTime(self, firstTimestamp):
         if arguments.zero:
@@ -181,20 +180,53 @@ class TimestampManipulator:
             return timestamps[segmentNumber][0]
 
     def padTimestamps(self, segmentStart, segmentEnd):
+        print("Input: " + segmentStart + " " + segmentEnd)
+
         if arguments.pad:
-            segmentStart += arguments.pad
-            segmentEnd -= arguments.pad
+            startSeconds = self.convertToSeconds(segmentStart)
+            endSeconds = self.convertToSeconds(segmentEnd)
+            startSeconds += int(arguments.pad)
+            endSeconds -= int(arguments.pad)
+
+            print("Output: " + self.convertFromSeconds(startSeconds) + " " + self.convertFromSeconds(endSeconds))
+            return self.convertFromSeconds(startSeconds), self.convertFromSeconds(endSeconds)
+        else:
+            return segmentStart, segmentEnd
+
 
     def silenceSplit(self, segmentStart, segmentEnd):
+        startSeconds = self.convertToSeconds(segmentStart)
+        endSeconds = self.convertToSeconds(segmentEnd)
+
+        # Loops through every silence timestamp ffmpeg detected and checks
+        # whether it is more than arguments.intelligent_time seconds away
+        # from a given timestamp
         for stamp in self.silenceTimestamps:
-            difference = abs(segmentStart - stamp[1])
+            difference = abs(startSeconds - stamp[1])
             if difference < arguments.intelligent_time:
-                segmentStart = stamp[1]
+                segmentStart = self.convertFromSeconds(stamp[1])
 
         for stamp in self.silenceTimestamps:
-            difference = abs(segmentEnd - stamp[0])
+            difference = abs(endSeconds - stamp[0])
             if difference < arguments.intelligent_time:
-                segmentStart = stamp[0]
+                segmentStart = self.convertFromSeconds(stamp[0])
+
+    # Could not find any built-in method to do what I want, so here we go
+    def convertToSeconds(self, timeString):
+        seconds = 0
+
+        separated = timeString.split(":")
+        # Strings can have a large decimal point, so float conversion is necessary
+        seconds += int(float(separated[-1]))
+        seconds += int(separated[-2]) * 60
+        if len(separated) > 2:
+            seconds += int(separated[-3]) * 3600
+
+        return seconds
+
+    def convertFromSeconds(self, seconds):
+        delta = timedelta(seconds=seconds)
+        return str(delta)
 
 class SilenceFinder:
     def getSilenceTimestamps(self, fileName):
@@ -219,9 +251,9 @@ class SilenceFinder:
             end = self.checkEndRegex(line)
 
             if start:
-                pair[0] = timedelta(seconds=start)
+                pair[0] = start
             elif end:
-                pair[1] = timedelta(seconds=end)
+                pair[1] = end
 
             if pair[0] and pair[1]:
                 silence.append(pair)
@@ -296,7 +328,7 @@ def parseArgs():
                         help=help_texts["video"])
 
     parser.add_argument("-p", "--pad",
-                        action="store_true",
+                        action="store",
                         dest="pad",
                         help=help_texts["numerical"])
 
