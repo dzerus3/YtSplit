@@ -5,6 +5,7 @@ import argparse
 import subprocess
 import youtube_dl
 from os import remove
+from datetime import timedelta
 
 version = "1.0.0 - Release"
 
@@ -66,6 +67,8 @@ class TimestampRetriever:
         if not name:
             return [time.group(0), None]
 
+        #TODO Convert the timestamps to timedelta
+
         return [time.group(0), name.group(0)]
 
 class VideoDownloader:
@@ -84,9 +87,10 @@ class VideoDownloader:
 
     # Downloads video if asked for it. If not, just returns video file name.
     def setDownloadOptions(self):
+        #TODO Allow user to use video name as big file name
         ydlOpts = {'outtmpl': 'ytdl-output.%(ext)s'}
         # Most videos are merged into mkv by default.
-        # TODO: fails if it merges to webm instead
+        #TODO: fails if it merges to webm instead
         self.outputFormat = "mkv"
 
         if arguments.format:
@@ -102,20 +106,22 @@ class VideoDownloader:
 class VideoManipulator:
     def __init__(self, timestamps):
         downloader = VideoDownloader()
+        self.timestampManip = TimestampManipulator()
 
         self.timestamps = timestamps
         self.videoName = downloader.getVideo()
         self.fileFormat = self.getFileFormat(self.videoName)
 
     def splitVideo(self):
-        currentTime = self.getStartingTime(self.timestamps[0][0])
+        currentTime = self.timestampManip.getStartingTime(self.timestamps[0][0])
+        print("Starting time: " + currentTime)
         videoDuration = self.getVideoDuration(self.videoName)
         segmentNumber = 1
 
         for stamp in self.timestamps:
             name = self.getSegmentName(str(segmentNumber), stamp[1])
 
-            endTime = self.getEndTime(videoDuration, segmentNumber)
+            endTime = self.timestampManip.getEndTime(videoDuration, segmentNumber, self.timestamps)
 
             #TODO make this work
             # command = ["ffmpeg", "-ss", currentTime, "-t", endTime, "-i", videoName, "-acodec", "copy", "-vcodec", "copy", "\"" + name + "." + fileFormat + "\""]
@@ -136,12 +142,6 @@ class VideoManipulator:
         else:
             return full
 
-    def getStartingTime(self, firstTimestamp):
-        if arguments.zero:
-            return "0:00"
-        else:
-            return firstTimestamp
-
     # Deletes the split video unless -k was passed
     def removeOriginal(self):
         if not arguments.keep:
@@ -154,8 +154,49 @@ class VideoManipulator:
             print("Could not find file extension in file name. Quitting.")
             quit()
 
+        return fileFormat.group(0)
+
+    def getVideoDuration(self, videoName):
+        command = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", "-sexagesimal", videoName]
+        duration = subprocess.check_output(command).decode("utf-8")
+
+        return re.sub("'|\n", "", duration)
+
+class TimestampManipulator:
+    def __init__(self):
+        if arguments.intelligent:
+            silence = SilenceFinder()
+            self.silenceTimestamps = silence.getSilenceTimestamps
+
+    def getStartingTime(self, firstTimestamp):
+        if arguments.zero:
+            return "0:00"
+        else:
+            return firstTimestamp
+
+    def getEndTime(self, videoDuration, segmentNumber, timestamps):
+        if segmentNumber == len(timestamps):
+            return videoDuration
+        else:
+            return timestamps[segmentNumber][0]
+
+    def padTimestamps(self, segmentStart, segmentEnd):
+        if arguments.pad:
+            segmentStart += arguments.pad
+            segmentEnd -= arguments.pad
+
+    def silenceSplit(self, segmentStart, segmentEnd):
+        for stamp in self.silenceTimestamps:
+            difference = abs(segmentStart - stamp[1])
+            if difference < arguments.intelligent_time:
+                segmentStart = stamp[1]
+
+        for stamp in self.silenceTimestamps:
+            difference = abs(segmentEnd - stamp[0])
+            if difference < arguments.intelligent_time:
+                segmentStart = stamp[0]
+
 class SilenceFinder:
-    # This entire function is basically weird voodoo magic, but hey, it works
     def getSilenceTimestamps(self, fileName):
         print("Retrieving silent parts of video for --intelligent. This may take several minutes.")
         cmd = f"ffmpeg -i {fileName} -af silencedetect=d=0.5:n=0.03 -f null -"
@@ -178,9 +219,9 @@ class SilenceFinder:
             end = self.checkEndRegex(line)
 
             if start:
-                pair[0] = start
+                pair[0] = timedelta(seconds=start)
             elif end:
-                pair[1] = end
+                pair[1] = timedelta(seconds=end)
 
             if pair[0] and pair[1]:
                 silence.append(pair)
