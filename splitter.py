@@ -14,6 +14,10 @@ def main():
     splitter = VideoManipulator(timestamps.getTimestamps())
     splitter.splitVideo()
 
+def dbg_print(output):
+    if arguments.debug:
+        print(output)
+
 class TimestampRetriever:
 # Returns timestamp in whichever way the user specified.
     def getTimestamps(self):
@@ -119,14 +123,17 @@ class VideoManipulator:
 
             endTime = self.timestampManip.getEndTime(videoDuration, segmentNumber, self.timestamps)
 
+            dbg_print("Before padding: " + currentTime + "  " + endTime)
             processedStart, processedEnd = self.timestampManip.padTimestamps(currentTime, endTime)
+            dbg_print("After padding: " + processedStart + "  " + processedEnd)
             processedStart, processedEnd = self.timestampManip.silenceSplit(processedStart, processedEnd)
 
             #TODO make this work
             # command = ["ffmpeg", "-ss", currentTime, "-t", endTime, "-i", videoName, "-acodec", "copy", "-vcodec", "copy", "\"" + name + "." + fileFormat + "\""]
             # subprocess.call(command)
 
-            command = f"ffmpeg -hide_banner -loglevel error -ss {processedStart} -to {processedEnd} -i {self.videoName} -acodec copy -vcodec copy \"{name}.{self.fileFormat}\""
+            command = f"ffmpeg -y -hide_banner -loglevel error -i {self.videoName} -acodec copy -vcodec copy -ss {processedStart} -to {processedEnd} \"{name}.{self.fileFormat}\""
+            dbg_print(command)
             subprocess.call(command, shell=True)
 
             segmentNumber += 1
@@ -319,7 +326,8 @@ def parseArgs():
         "extract_audio": "Tell youtube-dl to extract audio from video",
         "keep": "Keep original video",
         "regex_name": "Specify custom regex for file name",
-        "regex_timestamp": "Specify custom regex for timestamp"
+        "regex_timestamp": "Specify custom regex for timestamp",
+        "debug": "Adds extra print statements to show flow of program."
     }
 
     videoDestination = parser.add_mutually_exclusive_group(required=True)
@@ -418,6 +426,11 @@ def parseArgs():
                         dest="regex_timestamp",
                         default="^\d{1,2}:\d{2}:*\d{0,2}",
                         help=help_texts["regex_timestamp"])
+
+    videoDestination.add_argument("--debug",
+                        action="store_true",
+                        dest="debug",
+                        help=help_texts["debug"])
 
     return parser.parse_args()
 
