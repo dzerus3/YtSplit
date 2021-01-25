@@ -182,8 +182,8 @@ class TimestampManipulator:
         if arguments.pad:
             startSeconds = self.convertToSeconds(segmentStart)
             endSeconds = self.convertToSeconds(segmentEnd)
-            startSeconds += int(arguments.pad)
-            endSeconds -= int(arguments.pad)
+            startSeconds += float(arguments.pad)
+            endSeconds -= float(arguments.pad)
 
             return self.convertFromSeconds(startSeconds), self.convertFromSeconds(endSeconds)
         else:
