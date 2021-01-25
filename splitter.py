@@ -10,8 +10,6 @@ from datetime import timedelta
 version = "1.0.0 - Release"
 
 def main():
-    # silence = SilenceFinder()
-    # silence.getSilenceTimestamps(arguments.video)
     timestamps = TimestampRetriever()
     splitter = VideoManipulator(timestamps.getTimestamps())
     splitter.splitVideo()
@@ -108,6 +106,7 @@ class VideoManipulator:
 
         self.timestamps = timestamps
         self.videoName = downloader.getVideo()
+        self.timestampManip.loadVideoSilences(self.videoName)
         self.fileFormat = self.getFileFormat(self.videoName)
 
     def splitVideo(self):
@@ -120,13 +119,14 @@ class VideoManipulator:
 
             endTime = self.timestampManip.getEndTime(videoDuration, segmentNumber, self.timestamps)
 
-            paddedStart, paddedEnd = self.timestampManip.padTimestamps(currentTime, endTime)
+            processedStart, processedEnd = self.timestampManip.padTimestamps(currentTime, endTime)
+            processedStart, processedEnd = self.timestampManip.silenceSplit(currentTime, endTime)
 
             #TODO make this work
             # command = ["ffmpeg", "-ss", currentTime, "-t", endTime, "-i", videoName, "-acodec", "copy", "-vcodec", "copy", "\"" + name + "." + fileFormat + "\""]
             # subprocess.call(command)
 
-            command = f"ffmpeg -hide_banner -loglevel error -ss {paddedStart} -to {paddedEnd} -i {self.videoName} -acodec copy -vcodec copy \"{name}.{self.fileFormat}\""
+            command = f"ffmpeg -hide_banner -loglevel error -ss {processedStart} -to {processedEnd} -i {self.videoName} -acodec copy -vcodec copy \"{name}.{self.fileFormat}\""
             subprocess.call(command, shell=True)
 
             segmentNumber += 1
@@ -162,10 +162,10 @@ class VideoManipulator:
         return re.sub("'|\n", "", duration)
 
 class TimestampManipulator:
-    def __init__(self):
+    def loadVideoSilences(self, fileName):
         if arguments.intelligent:
             silence = SilenceFinder()
-            self.silenceTimestamps = silence.getSilenceTimestamps()
+            self.silenceTimestamps = silence.getSilenceTimestamps(fileName)
 
     def getStartingTime(self, firstTimestamp):
         if arguments.zero:
@@ -180,36 +180,37 @@ class TimestampManipulator:
             return timestamps[segmentNumber][0]
 
     def padTimestamps(self, segmentStart, segmentEnd):
-        print("Input: " + segmentStart + " " + segmentEnd)
-
         if arguments.pad:
             startSeconds = self.convertToSeconds(segmentStart)
             endSeconds = self.convertToSeconds(segmentEnd)
             startSeconds += int(arguments.pad)
             endSeconds -= int(arguments.pad)
 
-            print("Output: " + self.convertFromSeconds(startSeconds) + " " + self.convertFromSeconds(endSeconds))
             return self.convertFromSeconds(startSeconds), self.convertFromSeconds(endSeconds)
         else:
             return segmentStart, segmentEnd
 
-
     def silenceSplit(self, segmentStart, segmentEnd):
-        startSeconds = self.convertToSeconds(segmentStart)
-        endSeconds = self.convertToSeconds(segmentEnd)
+        if arguments.intelligent:
+            startSeconds = self.convertToSeconds(segmentStart)
+            endSeconds = self.convertToSeconds(segmentEnd)
 
-        # Loops through every silence timestamp ffmpeg detected and checks
-        # whether it is more than arguments.intelligent_time seconds away
-        # from a given timestamp
-        for stamp in self.silenceTimestamps:
-            difference = abs(startSeconds - stamp[1])
-            if difference < arguments.intelligent_time:
-                segmentStart = self.convertFromSeconds(stamp[1])
+            # Loops through every silence timestamp ffmpeg detected and checks
+            # whether it is more than arguments.intelligent_time seconds away
+            # from a given timestamp
+            for stamp in self.silenceTimestamps:
+                difference = abs(startSeconds - stamp[1])
+                if difference < arguments.intelligent_time:
+                    segmentStart = self.convertFromSeconds(stamp[1])
+                    break
 
-        for stamp in self.silenceTimestamps:
-            difference = abs(endSeconds - stamp[0])
-            if difference < arguments.intelligent_time:
-                segmentStart = self.convertFromSeconds(stamp[0])
+            for stamp in self.silenceTimestamps:
+                difference = abs(endSeconds - stamp[0])
+                if difference < arguments.intelligent_time:
+                    segmentEnd = self.convertFromSeconds(stamp[0])
+                    break
+
+        return segmentStart, segmentEnd
 
     # Could not find any built-in method to do what I want, so here we go
     def convertToSeconds(self, timeString):
@@ -217,7 +218,7 @@ class TimestampManipulator:
 
         separated = timeString.split(":")
         # Strings can have a large decimal point, so float conversion is necessary
-        seconds += int(float(separated[-1]))
+        seconds += float(separated[-1])
         seconds += int(separated[-2]) * 60
         if len(separated) > 2:
             seconds += int(separated[-3]) * 3600
@@ -251,9 +252,9 @@ class SilenceFinder:
             end = self.checkEndRegex(line)
 
             if start:
-                pair[0] = start
+                pair[0] = float(start)
             elif end:
-                pair[1] = end
+                pair[1] = float(end)
 
             if pair[0] and pair[1]:
                 silence.append(pair)
@@ -340,12 +341,20 @@ def parseArgs():
     parser.add_argument("--intelligent-duration",
                         action="store_true",
                         dest="intelligent_duration",
+                        default=0.5,
                         help=help_texts["intelligent_duration"])
 
     parser.add_argument("--intelligent-sensitivity",
                         action="store_true",
                         dest="intelligent_sensitivity",
+                        default=0.3,
                         help=help_texts["intelligent_sensitivity"])
+
+    parser.add_argument("--intelligent-time",
+                        action="store_true",
+                        dest="intelligent_time",
+                        default=3,
+                        help=help_texts["intelligent_time"])
 
     parser.add_argument("-n", "--numerical",
                         action="store_true",
