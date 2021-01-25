@@ -37,6 +37,7 @@ class TimestampRetriever:
             quit()
 
     def getTimestampFromDescription(self, url):
+        dbg_print("Retrieving timestamps from Youtube")
         timestamps = list()
         with youtube_dl.YoutubeDL({}) as ydl:
             infoDict = ydl.extract_info(url, download=False)
@@ -48,6 +49,7 @@ class TimestampRetriever:
         return timestamps
 
     def getTimestampFromFile(self, fileName):
+        dbg_print("Retrieving timestamps from text file")
         timestamps = list()
         with open(arguments.file, "r") as timestampFile:
             for line in timestampFile.readlines():
@@ -76,6 +78,7 @@ class VideoDownloader:
         if arguments.video:
             return arguments.video
         else:
+            dbg_print("Downloading video from youtube")
             ydlOpts = self.setDownloadOptions()
             self.downloadVideo(ydlOpts)
 
@@ -94,9 +97,11 @@ class VideoDownloader:
         self.outputFormat = "mkv"
 
         if arguments.format:
+            dbg_print(f"youtube-dl will reencode video in {arguments.format} format")
             self.outputFormat = arguments.format
             ydlOpts["recodevideo"] = self.outputFormat
         elif arguments.extract_audio:
+            dbg_print(f"youtube-dl will extract audio in {arguments.extract_audio} format")
             self.outputFormat = arguments.extract_audio
             ydlOpts["extractaudio"] = True
             ydlOpts["audioformat"] = arguments.extract_audio
@@ -118,14 +123,15 @@ class VideoManipulator:
         videoDuration = self.getVideoDuration(self.videoName)
         segmentNumber = 1
 
+        dbg_print("Starting to split the file")
         for stamp in self.timestamps:
             name = self.getSegmentName(str(segmentNumber), stamp[1])
 
             endTime = self.timestampManip.getEndTime(videoDuration, segmentNumber, self.timestamps)
 
-            dbg_print("Before padding: " + currentTime + "  " + endTime)
+            dbg_print("Timestamp before padding: " + currentTime + "  " + endTime)
             processedStart, processedEnd = self.timestampManip.padTimestamps(currentTime, endTime)
-            dbg_print("After padding: " + processedStart + "  " + processedEnd)
+            dbg_print("Timestamp after padding: " + processedStart + "  " + processedEnd)
             processedStart, processedEnd = self.timestampManip.silenceSplit(processedStart, processedEnd)
 
             #TODO make this work
@@ -151,6 +157,7 @@ class VideoManipulator:
     # Deletes the split video unless -k was passed
     def removeOriginal(self):
         if not arguments.keep:
+            dbg_print("Deleting split video...")
             remove(self.videoName)
 
     def getFileFormat(self, videoName):
@@ -162,6 +169,7 @@ class VideoManipulator:
         return fileFormat.group(0)
 
     def getVideoDuration(self, videoName):
+        dbg_print("Running ffprobe to get video duration")
         command = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", "-sexagesimal", videoName]
         duration = subprocess.check_output(command).decode("utf-8")
 
@@ -247,7 +255,7 @@ class TimestampManipulator:
 
 class SilenceFinder:
     def getSilenceTimestamps(self, fileName):
-        print("Retrieving silent parts of video for --intelligent. This may take several minutes.")
+        dbg_print("Retrieving silent parts of video for --intelligent. This may take a while.")
         cmd = f"ffmpeg -i {fileName} -af silencedetect=d=0.5:n=0.03 -f null -"
         args = cmd.split()
         # FFMPEG only properly output to subprocess.Popen due to the way it buffers lines
@@ -327,7 +335,7 @@ def parseArgs():
         "keep": "Keep original video",
         "regex_name": "Specify custom regex for file name",
         "regex_timestamp": "Specify custom regex for timestamp",
-        "debug": "Adds extra print statements to show flow of program."
+        "debug": "Adds extra print statements to show flow of program. Run this to see what the program is doing at a given time."
     }
 
     videoDestination = parser.add_mutually_exclusive_group(required=True)
