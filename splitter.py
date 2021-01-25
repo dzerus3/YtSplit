@@ -186,8 +186,18 @@ class TimestampManipulator:
             endSeconds -= float(arguments.pad)
 
             return self.convertFromSeconds(startSeconds), self.convertFromSeconds(endSeconds)
-        else:
-            return segmentStart, segmentEnd
+
+        # This is so that both pad-beginning and pad-end can go together
+        startSeconds = self.convertToSeconds(segmentStart)
+        endSeconds = self.convertToSeconds(segmentEnd)
+
+        if arguments.pad_beginning:
+            startSeconds += float(arguments.pad_beginning)
+
+        if arguments.pad_end:
+            endSeconds -= float(arguments.pad_end)
+
+        return self.convertFromSeconds(startSeconds), self.convertFromSeconds(endSeconds)
 
     def silenceSplit(self, segmentStart, segmentEnd):
         if arguments.intelligent:
@@ -297,6 +307,8 @@ def parseArgs():
         "video": "Destination of video file",
         "numerical": "Name videos numerically (useful if file does not follow `timestamp - name` format)",
         "pad": "Pad beginning and end of audio by certain amount of seconds. May help smooth transitions when splitting music compilations.",
+        "pad_beginning": "Same as -p, but only for the beginning.",
+        "pad_end": "Same as -p, but only for the end.",
         "intelligent": "Attempts to intelligently detect transitions between tracks based on whether there is silence next to the timestamp. Not guaranteed to work.",
         "intelligent_duration": "Minimum duration of silence for it to be noticed. Usable only with --intelligent. Default: 0.5",
         "intelligent_sensitivity": "Sensitivity of silence detector. Higher means more sensitive. Do not set the value too high. Usable only with --intelligent. Default: 0.03",
@@ -330,26 +342,36 @@ def parseArgs():
     parser.add_argument("-p", "--pad",
                         action="store",
                         dest="pad",
-                        help=help_texts["numerical"])
+                        help=help_texts["pad"])
+
+    parser.add_argument("-pb", "--pad-beginning",
+                        action="store",
+                        dest="pad_beginning",
+                        help=help_texts["pad_end"])
+
+    parser.add_argument("-pe", "--pad-end",
+                        action="store",
+                        dest="pad_end",
+                        help=help_texts["pad_beginning"])
 
     parser.add_argument("-i", "--intelligent",
                         action="store_true",
                         dest="intelligent",
                         help=help_texts["intelligent"])
 
-    parser.add_argument("--intelligent-duration",
+    parser.add_argument("-id", "--intelligent-duration",
                         action="store_true",
                         dest="intelligent_duration",
                         default=0.5,
                         help=help_texts["intelligent_duration"])
 
-    parser.add_argument("--intelligent-sensitivity",
+    parser.add_argument("-is", "--intelligent-sensitivity",
                         action="store_true",
                         dest="intelligent_sensitivity",
                         default=0.3,
                         help=help_texts["intelligent_sensitivity"])
 
-    parser.add_argument("--intelligent-time",
+    parser.add_argument("-it", "--intelligent-time",
                         action="store_true",
                         dest="intelligent_time",
                         default=3,
