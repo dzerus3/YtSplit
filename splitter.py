@@ -120,7 +120,7 @@ class VideoManipulator:
             endTime = self.timestampManip.getEndTime(videoDuration, segmentNumber, self.timestamps)
 
             processedStart, processedEnd = self.timestampManip.padTimestamps(currentTime, endTime)
-            processedStart, processedEnd = self.timestampManip.silenceSplit(currentTime, endTime)
+            processedStart, processedEnd = self.timestampManip.silenceSplit(processedStart, processedEnd)
 
             #TODO make this work
             # command = ["ffmpeg", "-ss", currentTime, "-t", endTime, "-i", videoName, "-acodec", "copy", "-vcodec", "copy", "\"" + name + "." + fileFormat + "\""]
