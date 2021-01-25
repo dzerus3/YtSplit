@@ -147,7 +147,6 @@ class VideoManipulator:
             remove(self.videoName)
 
     def getFileFormat(self, videoName):
-        print(videoName)
         fileFormat = re.search("(?<=\.)\w*", videoName)
         if not fileFormat:
             print("Could not find file extension in file name. Quitting.")
