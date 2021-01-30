@@ -329,7 +329,7 @@ def parseArgs():
                         default="^\d{1,2}:\d{2}:*\d{0,2}",
                         help=help_texts["regex_timestamp"])
 
-    videoDestination.add_argument("--debug",
+    parser.add_argument("--debug",
                         action="store_true",
                         dest="debug",
                         help=help_texts["debug"])
