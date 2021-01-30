@@ -81,6 +81,7 @@ class VideoDownloader:
             dbg_print("Downloading video from youtube")
             ydlOpts = self.setDownloadOptions()
             self.downloadVideo(ydlOpts)
+            self.checkForWebm()
 
             return "ytdl-output." + self.outputFormat
 
@@ -107,6 +108,12 @@ class VideoDownloader:
             ydlOpts["audioformat"] = arguments.extract_audio
 
         return ydlOpts
+
+    def checkForWebm(self):
+        try:
+            open("ytdl-output." + self.outputFormat, "r")
+        except:
+            self.outputFormat = "webm"
 
 class VideoManipulator:
     def __init__(self, timestamps):
