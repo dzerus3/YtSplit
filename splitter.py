@@ -94,18 +94,30 @@ class VideoDownloader:
         #TODO Allow user to use video name as big file name
         ydlOpts = {'outtmpl': 'ytdl-output.%(ext)s'}
         # Most videos are merged into mkv by default.
-        #TODO: fails if it merges to webm instead
         self.outputFormat = "mkv"
 
-        if arguments.format:
-            dbg_print(f"youtube-dl will reencode video in {arguments.format} format")
-            self.outputFormat = arguments.format
-            ydlOpts["recodevideo"] = self.outputFormat
-        elif arguments.extract_audio:
+        # Youtube-dl's python module's documentation is either legendarily bad,
+        # or I'm just stupid. Either way, until I figure out a way to do this users
+        # will have to use some other way to convert video formats. TODO
+#         if arguments.format:
+#             dbg_print(f"youtube-dl will reencode video in {arguments.format} format")
+
+#             self.outputFormat = arguments.format
+#             ydlOpts['postprocessors'] = [{
+#                 'key': 'FFmpegVideoConvertor',
+#                 'ext': arguments.format
+#             }]
+
+        if arguments.extract_audio:
             dbg_print(f"youtube-dl will extract audio in {arguments.extract_audio} format")
+
             self.outputFormat = arguments.extract_audio
-            ydlOpts["extractaudio"] = True
-            ydlOpts["audioformat"] = arguments.extract_audio
+            ydlOpts['format'] = 'bestaudio/best'
+            ydlOpts['postprocessors'] = [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': arguments.extract_audio,
+                'preferredquality': '192',
+            }]
 
         return ydlOpts
 
@@ -302,10 +314,10 @@ def parseArgs():
                         dest="download",
                         help=help_texts["download"])
 
-    parser.add_argument("--format",
-                        action="store",
-                        dest="format",
-                        help=help_texts["format"])
+    # parser.add_argument("--format", TODO see setDownloadOptions comment
+    #                     action="store",
+    #                     dest="format",
+    #                     help=help_texts["format"])
 
     parser.add_argument("--extract-audio",
                         action="store",
